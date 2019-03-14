@@ -1,0 +1,9 @@
+[package]
+name = "geneparse-rust"
+version = "0.1.0"
+authors = ["Marc André Legault <legaultmarc@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "rsgeneparselib"
+crate-type = ["dylib"]
