@@ -1,6 +1,5 @@
 use std::os::raw::{c_char, c_uint};
 use std::ffi::CStr;
-use std::ptr;
 
 use crate::core::Variant;
 

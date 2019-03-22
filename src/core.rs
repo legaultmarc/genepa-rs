@@ -5,11 +5,84 @@ use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
+use std::io::{BufReader, BufRead};
+use std::fs::File;
 
 
-#[derive(PartialEq, Clone, Hash)]
+#[derive(Debug)]
+pub struct VarFieldIdx {
+  // Denotes field indices in a delimited file containing variants. 
+  pub delimiter: char,
+  pub name: usize,
+  pub chrom: usize,
+  pub pos: usize,
+  pub a1: usize,
+  pub a2: usize,
+}
+
+
+pub struct DelimitedVariantsReader {
+    iter: Box<std::io::Lines<std::io::BufReader<std::fs::File>>>,
+    delim: char,
+    idx: VarFieldIdx
+}
+
+
+impl DelimitedVariantsReader {
+    pub fn new(filename: &str, delim: char, has_header: bool, idx: VarFieldIdx)
+        -> DelimitedVariantsReader
+    {
+        // Read the file.
+        let f = File::open(filename)
+            .expect(&format!("Couldn't open file: {:?}", filename));
+
+        let mut iter = BufReader::new(f).lines();
+
+        // Skip header if needed.
+        if has_header {
+            iter.next();
+        }
+
+        DelimitedVariantsReader {
+            iter: Box::new(iter),
+            delim: delim,
+            idx: idx
+        }
+    }
+}
+
+
+impl Iterator for DelimitedVariantsReader {
+    type Item = Variant;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(s) = self.iter.next() {
+            // Split the string.
+            let line = s.unwrap();
+            let fields = Vec::from_iter(line.split(self.delim));
+
+            // Upper alleles.
+            let a1 = fields[self.idx.a1].to_string().to_uppercase();
+            let a2 = fields[self.idx.a2].to_string().to_uppercase();
+
+            // Parse the variant.
+            let v = Variant::new(
+                fields[self.idx.name].to_string(),
+                fields[self.idx.chrom].to_string(),
+                fields[self.idx.pos].parse().unwrap(),   
+                (a1, a2)
+            );
+
+            return Some(v);
+        }
+        None
+    }
+}
+
+
+#[derive(PartialEq, Clone, Hash, Debug)]
 pub struct Chromosome {
-    name: String
+    pub name: String
 }
 
 
@@ -20,13 +93,13 @@ impl fmt::Display for Chromosome {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct Variant {
-    name: String,
-    chrom: Chromosome,
-    position: u32,
-    alleles: (String, String)
+    pub name: String,
+    pub chrom: Chromosome,
+    pub position: u32,
+    pub alleles: (String, String)
 }
 
 
