@@ -53,7 +53,7 @@ impl DelimitedVariantsReader {
 
 
 impl Iterator for DelimitedVariantsReader {
-    type Item = Variant;
+    type Item = OrderedAllelesVariant;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(s) = self.iter.next() {
@@ -70,13 +70,31 @@ impl Iterator for DelimitedVariantsReader {
                 fields[self.idx.name].to_string(),
                 fields[self.idx.chrom].to_string(),
                 fields[self.idx.pos].parse().unwrap(),   
-                (a1, a2)
+                (a1.clone(), a2)
             );
 
-            return Some(v);
+            let a1_idx = if &v.alleles.0 == &a1 { 0 } else { 1 };
+
+            return Some(
+                OrderedAllelesVariant { variant: v, a1_idx: a1_idx }
+            );
         }
         None
     }
+}
+
+
+// This is simply a struct where the a1 allele is identified.
+// It can be used for arbitrary cases where we need to remember the order
+// of the alleles (e.g. which one is deleterious, which one is the coded
+// allele in a statistical model, etc.)
+//
+// For instance, it is used when creating an iterator of variants from
+// a tab-delimited file so that it is possible to known which field
+// the alleles came from if needed.
+pub struct OrderedAllelesVariant {
+    pub variant: Variant,
+    pub a1_idx: u8,
 }
 
 
