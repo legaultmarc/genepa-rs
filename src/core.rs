@@ -128,33 +128,6 @@ impl fmt::Display for Variant {
     }
 }
 
-
-fn order_alleles(a1: String, a2: String) -> (String, String) {
-    if a1.len() == a2.len() {
-        // Order alphabetically.
-        if a1 < a2 {
-            return (a1, a2);
-        }
-
-        else {
-            return (a2, a1);
-        }
-    }
-
-    else {
-        // Order wrt length.
-        if a1.len() < a2.len() {
-            return (a1, a2);
-        }
-
-        else {
-            return (a2, a1);
-        }
-
-    }
-}
-
-
 impl Variant {
 
     pub fn new(
@@ -290,4 +263,65 @@ pub fn complement(s: &String) -> String {
             _ => c
         }
     }))
+}
+
+
+#[derive(Debug)]
+pub struct Genotypes {
+    pub variant: Variant,
+    pub genotypes: Vec<Option<u8>>,
+    coded_idx: u8
+}
+
+
+impl Genotypes {
+    pub fn new(variant: Variant, genotypes: Vec<Option<u8>>, coded_allele: &str)
+        -> Genotypes {
+            // Find the coded allele.
+            let coded = String::from(coded_allele).to_uppercase();
+            let coded_idx: u8 = if variant.alleles.0 == coded {
+                0
+            } else if variant.alleles.1 == coded {
+                1
+            } else {
+                panic!("Coded allele `{}` is not an allele of `{}`",
+                       coded_allele, &variant);
+            };
+
+            Genotypes { variant, genotypes, coded_idx }
+    }
+}
+
+impl PartialEq for Genotypes {
+    fn eq(&self, other: &Genotypes) -> bool {
+        (self.variant == other.variant) &&
+        (self.genotypes == other.genotypes) &&
+        (self.coded_idx == other.coded_idx)
+    }
+}
+
+
+fn order_alleles(a1: String, a2: String) -> (String, String) {
+    if a1.len() == a2.len() {
+        // Order alphabetically.
+        if a1 < a2 {
+            return (a1, a2);
+        }
+
+        else {
+            return (a2, a1);
+        }
+    }
+
+    else {
+        // Order wrt length.
+        if a1.len() < a2.len() {
+            return (a1, a2);
+        }
+
+        else {
+            return (a2, a1);
+        }
+
+    }
 }
