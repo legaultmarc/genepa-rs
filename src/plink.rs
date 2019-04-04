@@ -9,6 +9,8 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::io::{BufReader, BufRead, Write, SeekFrom, Seek};
 use std::fs::{File, OpenOptions};
+use std::sync::mpsc::sync_channel;
+use std::thread;
 
 use crate::core::{VarFieldIdx, DelimitedVariantsReader, Variant, Genotypes};
 
@@ -152,30 +154,31 @@ fn read_fam(filename: &str) -> Vec<String> {
 }
 
 
-struct PlinkReader {
+pub struct PlinkReader {
+    bim_reader: DelimitedVariantsReader,
     bim_index: BimIndex,
     samples: Vec<String>,
     bed_reader: BedReader<BufReader<File>>
 }
 
 impl PlinkReader {
-    fn new(prefix: &str) -> PlinkReader {
+    pub fn new(prefix: &str) -> PlinkReader {
         // Get or create the index for the bim.
         let bim_filename = format!("{}.bim", &prefix);
         let bim_index = BimIndex::get_or_create_bim_index(&bim_filename);
+        let bim_reader = BimReader::new(&bim_filename);
 
         let fam_filename = format!("{}.fam", &prefix);
         let samples = read_fam(&fam_filename);
 
         let n_samples = samples.len() as u32;
-        // let n_variants = &bim_index.n_variants.to_owned();
 
         let bed_filename = format!("{}.bed", &prefix);
         let bed_reader = BedReader::new(
             &bed_filename, n_samples, bim_index.n_variants
         );
 
-        PlinkReader {bim_index, samples, bed_reader}
+        PlinkReader {bim_reader, bim_index, samples, bed_reader}
     }
 
     fn get_variant_genotypes(&mut self, v: &Variant) -> Option<Genotypes> {
@@ -193,6 +196,39 @@ impl PlinkReader {
             return Some(Genotypes::new(v.clone(), geno_vec, &coded));
         }
         None
+    }
+}
+
+
+impl Iterator for PlinkReader {
+    type Item = Genotypes;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Check if we're at the end of the file.
+        // let file = self.bed_reader.reader.get_mut();
+        // let tell = file.seek(SeekFrom::Current(0)).unwrap();
+        // let chunk_size = self.bed_reader._chunk_size as u64;
+        
+        match self.bim_reader.next() {
+            Some(ref oav) => {
+                let geno_vec = self.bed_reader._read_variant_chunk();
+
+                let coded_allele =  if oav.a1_idx == 0 {
+                    &oav.variant.alleles.0
+                } else if oav.a1_idx == 1 {
+                    &oav.variant.alleles.1
+                } else {
+                    panic!("Problem with the ordered allele variant index");
+                };
+
+                Some(Genotypes::new(
+                    oav.variant.to_owned(),
+                    geno_vec,
+                    &coded_allele)
+                )
+            }
+            None => None
+        }
     }
 }
 
@@ -222,20 +258,15 @@ struct BedReader<T: BufRead> {
 }
 
 impl BedReader<BufReader<File>> {
-    fn get_chunk_size(n_samples: u32) -> usize {
-        (f64::from(n_samples) / 4.0).ceil() as usize
-    }
-
     pub fn new(filename: &str, n_samples: u32, n_variants: u32)
         -> BedReader<BufReader<File>> 
     {
         let f = File::open(filename).unwrap();
-        BedReader {
-            reader: BufReader::new(f),
-            n_samples,
-            n_variants,
-            _chunk_size: BedReader::get_chunk_size(n_samples)
-        }
+        BedReader::new_from_reader(BufReader::new(f), n_samples, n_variants)
+    }
+
+    fn get_chunk_size(n_samples: u32) -> usize {
+        (f64::from(n_samples) / 4.0).ceil() as usize
     }
 }
 
@@ -243,12 +274,19 @@ impl<T: BufRead> BedReader<T> {
     pub fn new_from_reader(reader: T, n_samples: u32, n_variants: u32)
         -> BedReader<T>
     {
-        BedReader {
+        let mut bed_reader = BedReader {
             reader,
             n_samples,
             n_variants,
             _chunk_size: BedReader::get_chunk_size(n_samples)
+        };
+
+        if !&bed_reader._verify_magic_number() {
+            panic!("The provided file is not in the BED format (according to \
+                   the magic number)");
         }
+
+        bed_reader
     }
 
     fn _read_variant_chunk(&mut self) -> Vec<Option<u8>> {
@@ -337,22 +375,20 @@ mod tests {
     #[test]
     fn test_constructor_from_reader() {
         let bytes_reader = get_example_bed();
-        let mut bed = BedReader::new_from_reader(
+        BedReader::new_from_reader(
             bytes_reader,
             503,
             11158
         );
-        assert!(bed._verify_magic_number());
     }
 
     #[test]
     fn test_constructor_from_file() {
-        let mut bed = BedReader::new(
+        BedReader::new(
             "test_data/common_extracted_1kg.missing.bed",
             503,
             11158
         );
-        assert!(bed._verify_magic_number());
     }
 
     #[test]

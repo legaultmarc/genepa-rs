@@ -36,6 +36,19 @@ work would be to add ``__getattribute__`` and ``__setattribute__`` methods
 on the Python side and bind them to getters and setters on the Rust API.
 Then, simply inherting from ``geneparse.Variant`` would take care of the currently unimplemented methods.
 
+# Benchmarks
+
+Now that there is a draft Plink reader implementation, I have done some
+benchmarking. I read a Plink binary file and printed the variants as well as
+the computed MAF.
+
+The BED file was 2.7GB containing 1,705,969 variants and 6,399 individuals.
+
+The Rust implementation took 6m42.094s for this task when creating the bim
+index and 6m31.473s when repeating the task after creating the index.
+
+The Python implementation took 12m55.804s (an almost 2x speedup).
+
 # How to run it
 
 For now, this is very hackish. You need to manually compile the library using

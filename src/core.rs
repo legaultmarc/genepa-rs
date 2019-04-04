@@ -290,6 +290,21 @@ impl Genotypes {
 
             Genotypes { variant, genotypes, coded_idx }
     }
+
+    pub fn coded_freq(&self) -> f64 {
+        let n = self.genotypes.len() as f64;
+        let sum: f64 = self.genotypes.iter()
+            .filter_map(|g| *g)
+            .map(f64::from)
+            .sum();
+
+        sum / (2.0 * n)
+    }
+
+    pub fn maf(&self) -> f64 {
+        let freq = self.coded_freq();
+        freq.min(1.0 - freq)
+    }
 }
 
 impl PartialEq for Genotypes {
