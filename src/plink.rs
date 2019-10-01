@@ -4,15 +4,14 @@
  * Utilities to read plink files.
  */
 
-use std::iter::FromIterator;
+use std::iter::{FromIterator};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::io::{BufReader, BufRead, Write, SeekFrom, Seek};
 use std::fs::{File, OpenOptions};
-use std::sync::mpsc::sync_channel;
-use std::thread;
 
-use crate::core::{VarFieldIdx, DelimitedVariantsReader, Variant, Genotypes};
+use crate::core::{VarFieldIdx, DelimitedVariantsReader, Variant, Genotypes,
+                  Chromosome};
 
 
 struct BimIndex {
@@ -89,20 +88,19 @@ impl BimIndex {
         }
     }
 
-    fn get_variant_index_and_coded(&self, v: &Variant) -> Option<(u32, String)> {
-        let region = format!("{}:{}-{}", v.chrom.name, v.position, v.position);
-
-        let output = Command::new("tabix")
+    // Returns a vector of index, variant, coded_allele
+    fn _run_tabix(&self, region: &str) -> Vec<(u32, Variant, String)> {
+        let tabix = Command::new("tabix")
             .arg(&self.filename)
-            .arg(&region)
+            .arg(region)
             .output()
             .expect("Couldn't spawn tabix for BIM variant query.");
 
-        if !output.status.success() {
+        if !tabix.status.success() {
             panic!("Error searching the BIM index using tabix.");
         }
 
-        let matches: Vec<(u32, Variant, String)> = String::from_utf8(output.stdout)
+        String::from_utf8(tabix.stdout)
             .unwrap()
             .lines()
             .map(|line| {
@@ -115,11 +113,26 @@ impl BimIndex {
                 let a1: String = vec[4].to_string();
                 let a2: String = vec[5].to_string();
 
-                let observed = Variant::new(name, chrom, pos, (a1.clone(), a2));
+                let variant = Variant::new(name, chrom, pos, (a1.clone(), a2));
 
                 let idx: u32 = vec[6].to_string().parse().unwrap();
-                (idx, observed, a1)
+
+                (idx, variant, a1)
             })
+            .collect()
+    }
+
+    fn get_region_index_and_coded(&self, chrom: &str, start: u32, end: u32)
+        -> Vec<(u32, Variant, String)> {
+            let region = format!("{}:{}-{}", chrom, start, end);
+            self._run_tabix(&region)
+        }
+
+    fn get_variant_index_and_coded(&self, v: &Variant) -> Option<(u32, String)> {
+        let region = format!("{}:{}-{}", v.chrom.name, v.position, v.position);
+
+        let matches: Vec<(u32, Variant, String)> = self._run_tabix(&region)
+            .into_iter()
             .filter(|(_, observed, _)| {
                 observed == v
             })
@@ -181,21 +194,42 @@ impl PlinkReader {
         PlinkReader {bim_reader, bim_index, samples, bed_reader}
     }
 
-    fn get_variant_genotypes(&mut self, v: &Variant) -> Option<Genotypes> {
+    fn _seek_to_idx(&mut self, idx: u32) {
+        let actual_seek = 3 + self.bed_reader._chunk_size * idx as usize;
+        self.bed_reader.reader.seek(SeekFrom::Start(actual_seek as u64))
+            .expect("Could not seek in BED");
+    }
+
+    fn _seek_and_read_to_idx(&mut self, idx: u32) -> Vec<Option<u8>> {
+        self._seek_to_idx(idx);
+        self.bed_reader._read_variant_chunk()
+    }
+
+    pub fn get_variant_genotypes(&mut self, v: &Variant) -> Option<Genotypes> {
         // Find in the index.
         let res = self.bim_index.get_variant_index_and_coded(&v);
         if let Some((idx, coded)) = res {
-            // Seek
-            let actual_seek = 3 + self.bed_reader._chunk_size * idx as usize;
-            self.bed_reader.reader.seek(SeekFrom::Start(actual_seek as u64))
-              .expect("Could not seek in BED");
-
             // Read variant
-            let geno_vec = self.bed_reader._read_variant_chunk();
-
+            let geno_vec = self._seek_and_read_to_idx(idx);
             return Some(Genotypes::new(v.clone(), geno_vec, &coded));
         }
         None
+    }
+
+    pub fn get_variants_in_region(&mut self, chrom: &Chromosome, start: u32,
+                                  end: u32)
+        -> Vec<Genotypes>
+    {
+        // Do a region query on the BIM index.
+        self.bim_index.get_region_index_and_coded(&chrom.name, start, end)
+            .into_iter()
+            .map(|(idx, v, coded)| {
+                // For every index, variant and coded, read the genotypes.
+                let geno_vec = self._seek_and_read_to_idx(idx);
+
+                Genotypes::new(v.clone(), geno_vec, &coded)
+            })
+            .collect()
     }
 }
 
@@ -210,6 +244,7 @@ impl Iterator for PlinkReader {
         // let chunk_size = self.bed_reader._chunk_size as u64;
         
         match self.bim_reader.next() {
+            // oav is ordered alleles variant.
             Some(ref oav) => {
                 let geno_vec = self.bed_reader._read_variant_chunk();
 

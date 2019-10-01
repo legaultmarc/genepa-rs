@@ -84,7 +84,7 @@ impl Iterator for DelimitedVariantsReader {
 }
 
 
-// This is simply a struct where the a1 allele is identified.
+// This is simply a struct where the a1 allele is identified.
 // It can be used for arbitrary cases where we need to remember the order
 // of the alleles (e.g. which one is deleterious, which one is the coded
 // allele in a statistical model, etc.)
