@@ -110,9 +110,9 @@ class Genotypes(object):
             self._data_pointer = C.genotypes_get_genotypes(self._obj)
 
         return np.frombuffer(
-            ffi.buffer(self._data_pointer, 2 * n),
+            ffi.buffer(self._data_pointer, 4 * n),
             count=n,
-            dtype=np.float16
+            dtype=np.float32
         )
 
     def print(self):
