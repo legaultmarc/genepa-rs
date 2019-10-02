@@ -11,7 +11,7 @@ use std::fs::File;
 
 #[derive(Debug)]
 pub struct VarFieldIdx {
-  // Denotes field indices in a delimited file containing variants. 
+  // Denotes field indices in a delimited file containing variants.
   pub delimiter: char,
   pub name: usize,
   pub chrom: usize,
@@ -69,7 +69,7 @@ impl Iterator for DelimitedVariantsReader {
             let v = Variant::new(
                 fields[self.idx.name].to_string(),
                 fields[self.idx.chrom].to_string(),
-                fields[self.idx.pos].parse().unwrap(),   
+                fields[self.idx.pos].parse().unwrap(),
                 (a1.clone(), a2)
             );
 
@@ -274,6 +274,13 @@ pub struct Genotypes {
 }
 
 
+impl fmt::Display for Genotypes {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "<Genotypes n={}>", self.genotypes.len())
+    }
+}
+
+
 impl Genotypes {
     pub fn new(variant: Variant, genotypes: Vec<Option<u8>>, coded_allele: &str)
         -> Genotypes {
@@ -292,13 +299,12 @@ impl Genotypes {
     }
 
     pub fn coded_freq(&self) -> f64 {
-        let n = self.genotypes.len() as f64;
-        let sum: f64 = self.genotypes.iter()
-            .filter_map(|g| *g)
-            .map(f64::from)
-            .sum();
+        let (n, sum) = self.genotypes
+            .iter()
+            .flatten()
+            .fold((0, 0), |(n, sum), g| (n + 1, sum + g));
 
-        sum / (2.0 * n)
+        (sum as f64) / (2.0 * (n as f64))
     }
 
     pub fn maf(&self) -> f64 {
